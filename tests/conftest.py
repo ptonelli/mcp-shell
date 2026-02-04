@@ -2,6 +2,7 @@ import pytest
 import subprocess
 import sys
 import os
+
 import time
 import signal
 import tempfile
@@ -34,7 +35,7 @@ def mcp_server(test_workdir):
     env["MCP_LOG_COMMANDS"] = "1"
     
     # Lancer le serveur comme sous-processus
-    print(f"\n[SETUP] Démarrage du serveur MCP sur le port {TEST_PORT}...")
+    print(f"\\n[SETUP] Démarrage du serveur MCP sur le port {TEST_PORT}...")
     proc = subprocess.Popen(
         [sys.executable, "server.py"],
         env=env,
@@ -49,28 +50,33 @@ def mcp_server(test_workdir):
     retries = 20
     
     for _ in range(retries):
-        try:
-            # On tente de récupérer le SSE handshake (GET)
+        try:            # On tente de récupérer le SSE handshake (GET)
             # FastMCP expose /sse
-            response = httpx.get(f"{SERVER_URL}/sse", timeout=1.0)
-            if response.status_code == 200:
-                started = True
-                break
-        except httpx.RequestError:
+            # On utilise stream=True pour ne pas bloquer sur le flux SSE infini
+            with httpx.stream("GET", f"{SERVER_URL}/sse", timeout=1.0) as response:
+                if response.status_code == 200:
+                    started = True
+                    break
+        except (httpx.RequestError, Exception):
             time.sleep(0.5)
             
     if not started:
         # Si échec, on lit les logs pour debug
-        stdout, stderr = proc.communicate(timeout=1)
-        print(f"\n[ERROR] Le serveur n'a pas démarré :\nSTDOUT: {stdout}\nSTDERR: {stderr}")
+        print(f"\\n[ERROR] Timeout lors de la connexion au serveur. Tentative de récupération des logs...")
         proc.terminate()
+        try:
+            stdout, stderr = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            
+        print(f"STDOUT: {stdout}\\nSTDERR: {stderr}")
         pytest.fail("Le serveur MCP n'a pas démarré dans les temps.")
 
     print(f"[SETUP] Serveur démarré.")
-    yield SERVER_URL
-    
+    yield SERVER_URL    
     # Teardown : Arrêt du serveur
-    print(f"\n[TEARDOWN] Arrêt du serveur...")
+    print(f"\\n[TEARDOWN] Arrêt du serveur...")
     proc.terminate()
     try:
         proc.wait(timeout=2)
@@ -80,6 +86,7 @@ def mcp_server(test_workdir):
 @pytest.fixture
 async def client_session(mcp_server):
     """
+
     Crée une session client MCP connectée au serveur de test.
     Nécessite 'mcp' installé.
     """
@@ -91,3 +98,14 @@ async def client_session(mcp_server):
         async with ClientSession(streams[0], streams[1]) as session:
             await session.initialize()
             yield session
+
+import pytest
+import pytest_asyncio
+import subprocess
+import sys
+import os
+
+import time
+import signal
+import tempfile
+import shutil

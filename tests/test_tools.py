@@ -1,8 +1,9 @@
 import pytest
 import os
+import json
 from mcp.types import CallToolRequestParams
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_list_tools(client_session):
     """Vérifie que les outils sont bien listés"""
     result = await client_session.list_tools()
@@ -10,21 +11,8 @@ async def test_list_tools(client_session):
     expected_tools = {"cd", "shell_exec", "get_image", "clone_repo", "read_file", "replace_lines"}
     assert expected_tools.issubset(tools)
 
-@pytest.mark.asyncio
-async def test_resource_projects(client_session, test_workdir):
-    """Vérifie la ressource projects://"""
-    # Créer un faux projet
-    project_path = os.path.join(test_workdir, "my-project")
-    os.makedirs(project_path, exist_ok=True)
-    
-    result = await client_session.list_resources()
-    # Note: L'implémentation actuelle de list_projects dans server.py renvoie une liste via resource(),
-    # mais FastMCP gère les templates. 
-    # Pour ce test simple, on va vérifier si on peut lire la ressource (si implémenté)
-    # ou simplement vérifier l'exécution d'une commande shell qui liste.
-    pass
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_shell_exec(client_session):
     """Test de l'exécution d'une commande shell simple"""
     result = await client_session.call_tool(
@@ -33,10 +21,18 @@ async def test_shell_exec(client_session):
     )
     # FastMCP retourne souvent une liste de TextContent
     content = result.content[0].text
-    assert "Hello MCP" in content
+    
+    # Le serveur retourne du JSON
+    try:
+        data = json.loads(content)
+        assert "Hello MCP" in data["stdout"]
+        assert data["success"] is True
+    except json.JSONDecodeError:
+        assert "Hello MCP" in content
+
     assert result.isError is False
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_file_operations(client_session, test_workdir):
     """Test complet : écriture (via shell), lecture, modification"""
     filename = "test_file.txt"
@@ -45,7 +41,7 @@ async def test_file_operations(client_session, test_workdir):
     # 1. Créer un fichier via shell_exec
     await client_session.call_tool(
         "shell_exec",
-        arguments={"command": f"echo 'Ligne 1\nLigne 2\nLigne 3' > {filename}"}
+        arguments={"command": f"echo 'Ligne 1\\nLigne 2\\nLigne 3' > {filename}"}
     )
     
     # 2. Lire le fichier
@@ -53,9 +49,17 @@ async def test_file_operations(client_session, test_workdir):
         "read_file",
         arguments={"file_path": filename}
     )
-    content = read_result.content[0].text
-    assert "Ligne 1" in content
-    assert "Ligne 3" in content
+    content_read = read_result.content[0].text
+    
+    # read_file retourne aussi du JSON
+    try:
+        data = json.loads(content_read)
+        text_content = data["content"]
+    except json.JSONDecodeError:
+        text_content = content_read
+        
+    assert "Ligne 1" in text_content
+    assert "Ligne 3" in text_content
     
     # 3. Remplacer une ligne
     replace_result = await client_session.call_tool(
@@ -64,7 +68,7 @@ async def test_file_operations(client_session, test_workdir):
             "file_path": filename,
             "start_line": 2,
             "end_line": 2,
-            "new_content": "Ligne 2 Modifiée\n"
+            "new_content": "Ligne 2 Modifiée\\n"
         }
     )
     assert replace_result.isError is False
@@ -74,11 +78,18 @@ async def test_file_operations(client_session, test_workdir):
         "read_file",
         arguments={"file_path": filename}
     )
-    new_content = read_again.content[0].text
-    assert "Ligne 2 Modifiée" in new_content
-    assert "Ligne 2\n" not in new_content
+    new_content_read = read_again.content[0].text
+    
+    try:
+        new_data = json.loads(new_content_read)
+        new_text_content = new_data["content"]
+    except json.JSONDecodeError:
+        new_text_content = new_content_read
+        
+    assert "Ligne 2 Modifiée" in new_text_content
+    assert "Ligne 2\\n" not in new_text_content
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_cd_tool(client_session, test_workdir):
     """Test du changement de répertoire"""
     # Créer un sous-dossier
@@ -91,8 +102,20 @@ async def test_cd_tool(client_session, test_workdir):
         arguments={"directory": subdir}
     )
     assert result.isError is False
-    assert f"Successfully changed to directory '{subdir}'" in str(result.content)
+    
+    # Parsing JSON result
+    content = json.loads(result.content[0].text)
+    assert content["success"] is True
+    assert f"Successfully changed to directory '{subdir}'" == content["message"]
     
     # Vérifier pwd via shell
     pwd_res = await client_session.call_tool("shell_exec", arguments={"command": "pwd"})
-    assert subdir in pwd_res.content[0].text
+    pwd_content = pwd_res.content[0].text
+    try:
+        pwd_data = json.loads(pwd_content)
+        pwd_text = pwd_data["stdout"]
+    except json.JSONDecodeError:
+        pwd_text = pwd_content
+        
+    assert subdir in pwd_text
+
