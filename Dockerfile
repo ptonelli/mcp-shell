@@ -3,7 +3,7 @@ FROM python:3.10-slim
 
 # Add useful command line tools and gosu for step-down from root
 RUN apt-get update && \
-    apt-get install -y curl wget git jq zip unzip rsync tree telnet netcat-traditional gosu file && \
+    apt-get install -y curl wget git jq zip unzip rsync tree telnet netcat-traditional gosu file bind9-host bind9-dnsutils && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
