@@ -1,18 +1,18 @@
 services:
   mcp-server:
-    build: .
+    image: docker.nautil.org/mcp-python:latest
     environment:
       - MCP_LOG_COMMANDS=true
       - WORKDIR=/home/projects
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/shell"]
+      test: ["CMD-SHELL", "curl -s http://localhost:8000/sse || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5
       start_period: 5s
 
   tester:
-    image: python:3.10-slim
+    image: docker.nautil.org/mcp-tester:latest
     depends_on:
       mcp-server:
         condition: service_healthy
@@ -20,6 +20,6 @@ services:
       - ./test_mcp_connection.py:/app/test_mcp_connection.py
     working_dir: /app
     environment:
-      - MCP_SERVER_URL=http://mcp-server:8000/shell
+      - MCP_SERVER_URL=http://mcp-server:8000/
     command: >
-      sh -c "pip install mcp && python test_mcp_connection.py"
+      sh -c "python test_mcp_connection.py"
