@@ -38,7 +38,7 @@ def log_command(command_type, command_data, result_success=None):
         sys.stdout.flush()  # Ensure logs are flushed immediately
 
 # Create an MCP server with environment variable configuration
-mcp = FastMCP("shell", stateless_http=True, host=HOST, port=PORT)
+mcp = FastMCP("shell", host=HOST, port=PORT)
 
 @mcp.resource("projects://")
 def list_projects() -> List[str]:
@@ -724,7 +724,7 @@ if __name__ == "__main__":
         initialize_workspace()
         print(f"Starting MCP server on {HOST}:{PORT}")
         print(f"Active project: {get_active_project()}")
-        mcp.run(transport="streamable-http")
+        mcp.run(transport="sse")
     except KeyboardInterrupt:
         print("\nShutting down MCP server...")
         log_command("system", "shutdown", True)
