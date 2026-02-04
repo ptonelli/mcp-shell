@@ -11,7 +11,7 @@ VERSION := $(shell date +%Y%m%d%H%M)
 # Resolve image name with optional namespace
 IMAGE := $(CONTAINER_REGISTRY)$(if $(NAMESPACE),/$(NAMESPACE))/$(PROJECT)
 
-.PHONY: docker dockerx docker-nocache push
+.PHONY: docker dockerx docker-nocache push test
 
 docker:
 	docker build -t $(IMAGE):latest $(CONTEXT)
@@ -28,3 +28,7 @@ push:
 	docker tag $(IMAGE):latest $(IMAGE):$(VERSION)
 	docker push $(IMAGE):$(VERSION)
 	docker push $(IMAGE):latest
+
+test:
+	# Installe les dépendances dans un venv éphémère géré par uv et lance les tests
+	uv run --with-requirements requirements-dev.txt pytest -v
