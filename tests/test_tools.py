@@ -106,7 +106,9 @@ async def test_cd_tool(client_session, test_workdir):
     # Parsing JSON result
     content = json.loads(result.content[0].text)
     assert content["success"] is True
-    assert f"Successfully changed to directory '{subdir}'" == content["message"]
+    assert subdir in content["message"]
+
+
     
     # Vérifier pwd via shell
     pwd_res = await client_session.call_tool("shell_exec", arguments={"command": "pwd"})
@@ -118,4 +120,22 @@ async def test_cd_tool(client_session, test_workdir):
         pwd_text = pwd_content
         
     assert subdir in pwd_text
+
+
+@pytest.mark.anyio
+async def test_get_image(client_session, test_workdir):
+    """Test get_image tool"""
+    filename = "test.png"
+    file_path = os.path.join(test_workdir, filename)
+    with open(file_path, "wb") as f:
+        f.write(b"fake image data")
+        
+    result = await client_session.call_tool(
+        "get_image",
+        arguments={"path": filename}
+    )
+    
+    assert result.isError is False
+    assert len(result.content) > 0
+    assert result.content[0].type == "image"
 

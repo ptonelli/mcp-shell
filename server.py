@@ -9,8 +9,9 @@ import subprocess
 import shutil
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.server.fastmcp.utilities.types import Image
+from mcp.types import ImageContent
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Annotated
+from typing import Dict, List, Optional, Union, Annotated, Any
 from pydantic import Field
 
 # Get configuration from environment variables with defaults
@@ -20,20 +21,34 @@ PORT = int(os.environ.get("PORT", 8000))
 
 # Environment variable to control command logging
 LOG_COMMANDS = os.environ.get("MCP_LOG_COMMANDS", "0").lower() in ("1", "true", "yes")
-
 # Global state to track current directory per session
 session_directories: Dict[str, str] = {}
 
 def get_session_cwd(ctx: Context) -> str:
-    """Get the current working directory for the current session."""
-    session_id = str(ctx.request_context.session.id)
+    try:
+        if hasattr(ctx, 'session_id') and ctx.session_id:
+            session_id = str(ctx.session_id)
+        elif ctx.request_context and ctx.request_context.session:
+            session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
+        else:
+            session_id = 'default'
+    except Exception:
+        session_id = 'default'
+
     if session_id not in session_directories:
         session_directories[session_id] = WORKDIR
     return session_directories[session_id]
 
 def set_session_cwd(ctx: Context, path: str):
-    """Set the current working directory for the current session."""
-    session_id = str(ctx.request_context.session.id)
+    try:
+        if hasattr(ctx, 'session_id') and ctx.session_id:
+            session_id = str(ctx.session_id)
+        elif ctx.request_context and ctx.request_context.session:
+            session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
+        else:
+            session_id = 'default'
+    except Exception:
+        session_id = 'default'
     session_directories[session_id] = os.path.abspath(path)
 
 def log_command(command_type, command_data, result_success=None):
@@ -114,14 +129,13 @@ def cd(ctx: Context, directory: str) -> dict:
             "success": False,
             "message": f"Failed to change directory: {str(e)}",
             "current_directory": current_dir,
-            "error": type(e).__name__
-        }
+            "error": type(e).__name__        }
 
 @mcp.tool()
 def get_image(
     ctx: Context,
     path: Annotated[str, Field(description="Path to the image file")]
-) -> Union[Image, dict]:
+) -> Union[ImageContent, dict]:
     """Get an image from the specified path, compressed if large."""
     cwd = get_session_cwd(ctx)
     abs_path = os.path.normpath(os.path.join(cwd, path))
@@ -145,10 +159,10 @@ def get_image(
             buffer = io.BytesIO()
             img = PILImage.open(abs_path)
             img.convert("RGB").save(buffer, format="JPEG", quality=60, optimize=True)
-            return Image(data=buffer.getvalue(), format="jpeg")
+            return Image(data=buffer.getvalue(), format="jpeg").to_image_content()
         else:
             with open(abs_path, 'rb') as f:
-                return Image(data=f.read(), format=ext)
+                return Image(data=f.read(), format=ext).to_image_content()
     except Exception as e:
         return {"success": False, "error": str(e)}
 
