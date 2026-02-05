@@ -85,10 +85,19 @@ def debug_ctx(ctx: Context, operation: str = "unknown") -> str:
     return "debug_completed"
 def _get_session_key(ctx: Context) -> str:
     """Extract session key consistently using only conversation ID."""
-    if hasattr(ctx, 'request_context') and ctx.request_context and hasattr(ctx.request_context, 'headers'):
-        cid = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
-        if cid:
+    try:
+        if hasattr(ctx, 'request_context') and ctx.request_context:
+            # Headers are located in request_context.request.headers
+            if hasattr(ctx.request_context, 'request') and hasattr(ctx.request_context.request, 'headers'):
+                headers = ctx.request_context.request.headers
+                cid = headers.get('x-conversation-id') or headers.get('X-Conversation-ID')
+                if cid:
+                    return f"conv_{cid}"
+    except Exception:
+        pass
+    return 'default'
             return f"conv_{cid}"
+            
     return 'default'
 
 def get_session_cwd(ctx: Context) -> str:
