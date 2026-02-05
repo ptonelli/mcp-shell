@@ -26,29 +26,30 @@ def test_workdir():
 @pytest.fixture(scope="session")
 def mcp_server(test_workdir):
     """Lance le serveur MCP en arrière-plan"""
-    
+
     # Définir l'environnement pour le serveur de test
     env = os.environ.copy()
     env["PORT"] = str(TEST_PORT)
     env["HOST"] = TEST_HOST
     env["WORKDIR"] = test_workdir
     env["MCP_LOG_COMMANDS"] = "1"
-    
+    env["MCP_TRANSPORT"] = "sse"  # Ajouté pour les tests
+
     # Lancer le serveur comme sous-processus
     print(f"\\n[SETUP] Démarrage du serveur MCP sur le port {TEST_PORT}...")
     proc = subprocess.Popen(
         [sys.executable, "server.py"],
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=sys.stdout,  # Redirige vers la console pour éviter le blocage
+        stderr=sys.stderr,
         text=True
     )
-    
+
     # Attendre que le serveur soit prêt (polling simple)
     import httpx
     started = False
     retries = 20
-    
+
     for _ in range(retries):
         try:            # On tente de récupérer le SSE handshake (GET)
             # FastMCP expose /sse

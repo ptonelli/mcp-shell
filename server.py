@@ -24,65 +24,6 @@ LOG_COMMANDS = os.environ.get("MCP_LOG_COMMANDS", "0").lower() in ("1", "true", 
 # Global state to track current directory per session
 session_directories: Dict[str, str] = {}
 
-def debug_ctx(ctx: Context, operation: str = "unknown") -> str:
-    """Debug function to examine all available attributes in Context object"""
-    if not LOG_COMMANDS:
-        return
-        
-    debug_info = {
-        "operation": operation,
-        "ctx_type": type(ctx).__name__,
-        "ctx_dir": dir(ctx),
-        "ctx_attrs": {}
-    }
-    
-    # Examine all attributes
-    for attr in dir(ctx):
-        if not attr.startswith('_'):
-            try:
-                value = getattr(ctx, attr)
-                if callable(value):
-                    debug_info["ctx_attrs"][attr] = f"<method: {type(value).__name__}>"
-                else:
-                    debug_info["ctx_attrs"][attr] = str(value)[:200]  # Truncate long values
-            except Exception as e:
-                debug_info["ctx_attrs"][attr] = f"<error: {e}>"
-    
-    # Special attention to request_context
-    if hasattr(ctx, 'request_context') and ctx.request_context:
-        debug_info["request_context"] = {
-            "type": type(ctx.request_context).__name__,
-            "dir": dir(ctx.request_context),
-            "attrs": {}
-        }
-        
-        for attr in dir(ctx.request_context):
-            if not attr.startswith('_'):
-                try:
-                    value = getattr(ctx.request_context, attr)
-                    if callable(value):
-                        debug_info["request_context"]["attrs"][attr] = f"<method: {type(value).__name__}>"
-                    else:
-                        debug_info["request_context"]["attrs"][attr] = str(value)[:200]
-                        
-                        # If it's a session object, dig deeper
-                        if attr == 'session' and hasattr(value, '__dict__'):
-                            debug_info["request_context"]["session_attrs"] = {}
-                            for session_attr in dir(value):
-                                if not session_attr.startswith('_'):
-                                    try:
-                                        session_value = getattr(value, session_attr)
-                                        debug_info["request_context"]["session_attrs"][session_attr] = str(session_value)[:200]
-                                    except Exception as e:
-                                        debug_info["request_context"]["session_attrs"][session_attr] = f"<error: {e}>"
-                                        
-                except Exception as e:
-                    debug_info["request_context"]["attrs"][attr] = f"<error: {e}>"
-    
-    timestamp = datetime.datetime.now().isoformat()
-    print(f"[{timestamp}] [MCP-DEBUG-CTX] {debug_info}", file=sys.stdout)
-    sys.stdout.flush()
-    return "debug_completed"
 def _get_session_key(ctx: Context) -> str:
     """Extract session key consistently using only conversation ID."""
     try:
@@ -98,14 +39,12 @@ def _get_session_key(ctx: Context) -> str:
     return 'default'
 
 def get_session_cwd(ctx: Context) -> str:
-    debug_ctx(ctx, "get_session_cwd")
     session_id = _get_session_key(ctx)
     if session_id not in session_directories:
         session_directories[session_id] = WORKDIR
     return session_directories[session_id]
 
 def set_session_cwd(ctx: Context, path: str):
-    debug_ctx(ctx, "set_session_cwd")
     session_id = _get_session_key(ctx)
     session_directories[session_id] = os.path.abspath(path)
 
@@ -426,29 +365,8 @@ def replace_lines(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@mcp.tool()
-def debug_headers(ctx: Context) -> dict:
-    """Debug tool to inspect the raw headers and context received from the client."""
-    result = {
-        "session_id": getattr(ctx, "session_id", None),
-        "request_context_type": str(type(getattr(ctx, "request_context", None))),
-        "headers": {}
-    }
-
-    try:
-        if hasattr(ctx, "request_context") and ctx.request_context:
-            if hasattr(ctx.request_context, "request") and hasattr(ctx.request_context.request, "headers"):
-                # Correct location for headers
-                result["headers"] = dict(ctx.request_context.request.headers)
-            else:
-                result["headers"] = "No headers found in request_context.request"
-        else:
-             result["error"] = "No request_context found in ctx"
-    except Exception as e:
-        result["error"] = f"Error inspecting headers: {str(e)}"
-
-    return result
 if __name__ == "__main__":
     os.chdir(WORKDIR)
-    print(f"Starting MCP-Shell on {HOST}:{PORT}, WORKDIR={WORKDIR}")
-    mcp.run(transport="streamable-http")
+    TRANSPORT = os.environ.get("MCP_TRANSPORT", "streamable-http")
+    print(f"Starting MCP-Shell on {HOST}:{PORT}, WORKDIR={WORKDIR}, TRANSPORT={TRANSPORT}")
+    mcp.run(transport=TRANSPORT)
