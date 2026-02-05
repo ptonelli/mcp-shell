@@ -85,9 +85,8 @@ def mcp_server(test_workdir):
         proc.kill()
 
 @pytest.fixture
-async def client_session(mcp_server):
+async def client_session(mcp_server, test_workdir):
     """
-
     Crée une session client MCP connectée au serveur de test.
     Nécessite 'mcp' installé.
     """
@@ -98,6 +97,11 @@ async def client_session(mcp_server):
     async with sse_client(f"{mcp_server}/sse") as streams:
         async with ClientSession(streams[0], streams[1]) as session:
             await session.initialize()
+            
+            # Reset CWD pour éviter les effets de bord entre les tests
+            # (car le serveur utilise une session 'default' partagée si pas d'ID)
+            await session.call_tool("cd", arguments={"directory": test_workdir})
+            
             yield session
 
 import pytest
