@@ -292,7 +292,7 @@ def replace_lines(
         if new_content.endswith("\n"): new_lines[-1] += "\n"
         
         modified = lines.copy()
-        end_idx = end_line if end_line is not None else start_line - 1
+        end_idx = end_line if end_line is not None else start_line
         modified[start_line-1:end_idx] = new_lines
         
         diff = "".join(difflib.unified_diff(lines, modified, fromfile="before", tofile="after"))
