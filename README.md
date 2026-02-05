@@ -17,19 +17,44 @@ The server now uses LibreChat's conversation ID (available via PR #9095) to crea
 
 Add this to your `librechat.yaml`:
 
+### LibreChat Configuration
+
+Add this to your `librechat.yaml`. The `X-Conversation-ID` header is crucial for isolating file system states between different chats.
+
 ```yaml
 mcpServers:
   mcp-shell:
     type: sse
-    url: http://localhost:8000
+    url: http://mcp-shell:8000/sse
     headers:
-      # This enables per-conversation isolation
+      # 🎯 KEY: This enables per-conversation isolation
       X-Conversation-ID: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+      # Optional: User context for logging
       X-User-ID: "{{LIBRECHAT_USER_ID}}"
-      X-User-Email: "{{LIBRECHAT_USER_EMAIL}}"
+    
     serverInstructions: |
       Shell execution server with per-conversation working directories.
-      Each conversation maintains its own state and file system context.
+      Each conversation maintains its own isolated file system state.
+      Capabilities: shell execution, file reading/writing, git cloning.
+```
+
+### Docker Compose Example
+
+Add this service to your `docker-compose.yml`:
+
+```yaml
+services:
+  mcp-shell:
+    container_name: mcp-shell
+    image: mcp-shell:latest
+    build: .
+    environment:
+      - WORKDIR=/home/projects
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MCP_LOG_COMMANDS=1
+    volumes:
+      - ./projects:/home/projects
 ```
 
 ### Debug Mode
@@ -40,62 +65,13 @@ Set `MCP_LOG_COMMANDS=1` to enable debug logging that shows:
 - Conversation ID detection from headers
 - Working directory assignments
 
+To run locally with debug logging:
 ```bash
 MCP_LOG_COMMANDS=1 python server.py
 ```
 
-## Original Features
-- read and write files and directories
-- run code (at least python)
-- install dependencies (uv or venv)
-
-Now on how I want to do it: This should run on its own : no need for an
-additional machine or API access. The LLM must not have the ability to run
-containers. The setup must itself be running inside a container with a mounting
-point for data to easily run on a home server.
-
-# Organisation
-
-2 sets of tools
-
-- shell prompt
-- code execution
-
-# Shell prompt (WIP)
-
-Just provide a shell prompt with the ability to set the current active directory.
-
-# Python execution (WIP)
-
-No complex security, the python code must run and the LLM must be able to add its own deps to run the code.
-
-# Integration with Librechat
-
-To integrate MCP Python with Librechat, you need to update the following configuration files:
-
-## docker-compose.yml
-
-Add the following service configuration to your docker-compose.yml:
-
-```yaml
-  mcp_python:
-    container_name: mcp_python
-    image: docker.nautil.org/mcp-python:latest
-    environment:
-      - WORKDIR=/home/projects
-    volumes:
-      - ./projects:/home/projects
-```
-
-## librechat.yaml
-
-Add the following MCP server configuration to your librechat.yaml:
-
-```yaml
-mcpServers:
-  python:
-    type: streamable-http
-    url: http://mcp_python:8000/mcp
-```
-
-This setup allows Librechat to interact with the MCP Python service, providing code execution and file management capabilities to your LLM.
+## Features
+- **Session Isolation**: Each LibreChat conversation gets its own working directory.
+- **File Operations**: Read, write, list files with path security checks.
+- **Shell Execution**: Run shell commands (supports Python venvs detection).
+- **Git Support**: Clone repositories and switch context automatically.
