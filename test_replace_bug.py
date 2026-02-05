@@ -64,12 +64,10 @@ Line 5
         
         print("=== EXPECTED ===")
         print(repr(expected_after_replace))
-        
         # Check if the result is what we expect
         print("=== ANALYSIS ===")
         if after_content == expected_after_replace:
             print("✅ SUCCESS: Line was replaced correctly")
-            return True
         else:
             print("❌ BUG DETECTED: Line was not replaced correctly")
             print(f"Expected:\n{expected_after_replace}")
@@ -79,8 +77,9 @@ Line 5
             after_lines = after_content.splitlines()
             expected_lines = expected_after_replace.splitlines()
             print(f"Expected {len(expected_lines)} lines, got {len(after_lines)} lines")
-            
-            return False
+        
+        # Use pytest assertion instead of returning boolean
+        assert after_content == expected_after_replace, f"Line replacement failed!\nExpected:\n{expected_after_replace}\nGot:\n{after_content}"
             
     finally:
         # Clean up
@@ -89,8 +88,10 @@ Line 5
 
 if __name__ == "__main__":
     print("Testing replace_lines function...")
-    success = test_replace_single_line_bug()
-    if success:
+    try:
+        test_replace_single_line_bug()
         print("\n🎉 Test PASSED - No bug detected")
-    else:
-        print("\n🐛 Test FAILED - Bug confirmed")
+    except AssertionError as e:
+        print(f"\n🐛 Test FAILED - Bug confirmed: {e}")
+    except Exception as e:
+        print(f"\n💥 Test ERROR: {e}")
