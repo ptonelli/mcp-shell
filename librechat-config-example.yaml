@@ -1,0 +1,39 @@
+# LibreChat configuration example for MCP Shell with Multi-Conversation Support
+# This configuration enables proper session isolation per conversation
+
+mcpServers:
+  mcp-shell:
+    type: sse
+    url: http://localhost:8000
+    headers:
+      # 🎯 KEY: This enables per-conversation isolation using the new LibreChat placeholder
+      X-Conversation-ID: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+      
+      # Optional: Add user context for additional isolation/logging
+      X-User-ID: "{{LIBRECHAT_USER_ID}}"
+      X-User-Email: "{{LIBRECHAT_USER_EMAIL}}"
+      X-User-Role: "{{LIBRECHAT_USER_ROLE}}"
+    
+    # Instructions shown to the agent when using this MCP server
+    serverInstructions: |
+      Shell execution server with per-conversation working directories.
+      Each conversation maintains its own isolated file system state and working directory.
+      
+      Key capabilities:
+      - Execute shell commands with proper environment detection
+      - Read and write files with path restrictions
+      - Change working directory (persists per conversation)
+      - Clone Git repositories 
+      - Multi-user support with session isolation
+    
+    # Optional settings
+    timeout: 30000      # 30 seconds for command execution
+    initTimeout: 10000  # 10 seconds for server initialization
+    chatMenu: true      # Include in chat dropdown
+    
+# MCP Settings (if using internal/local addresses)
+mcpSettings:
+  allowedDomains:
+    - "localhost"
+    - "127.0.0.1"
+    - "host.docker.internal"  # If running in Docker

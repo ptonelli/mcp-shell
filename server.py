@@ -24,31 +24,117 @@ LOG_COMMANDS = os.environ.get("MCP_LOG_COMMANDS", "0").lower() in ("1", "true", 
 # Global state to track current directory per session
 session_directories: Dict[str, str] = {}
 
-def get_session_cwd(ctx: Context) -> str:
-    try:
-        if hasattr(ctx, 'session_id') and ctx.session_id:
-            session_id = str(ctx.session_id)
-        elif ctx.request_context and ctx.request_context.session:
-            session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
-        else:
-            session_id = 'default'
-    except Exception:
-        session_id = 'default'
+def debug_ctx(ctx: Context, operation: str = "unknown") -> str:
+    """Debug function to examine all available attributes in Context object"""
+    if not LOG_COMMANDS:
+        return
+        
+    debug_info = {
+        "operation": operation,
+        "ctx_type": type(ctx).__name__,
+        "ctx_dir": dir(ctx),
+        "ctx_attrs": {}
+    }
+    
+    # Examine all attributes
+    for attr in dir(ctx):
+        if not attr.startswith('_'):
+            try:
+                value = getattr(ctx, attr)
+                if callable(value):
+                    debug_info["ctx_attrs"][attr] = f"<method: {type(value).__name__}>"
+                else:
+                    debug_info["ctx_attrs"][attr] = str(value)[:200]  # Truncate long values
+            except Exception as e:
+                debug_info["ctx_attrs"][attr] = f"<error: {e}>"
+    
+    # Special attention to request_context
+    if hasattr(ctx, 'request_context') and ctx.request_context:
+        debug_info["request_context"] = {
+            "type": type(ctx.request_context).__name__,
+            "dir": dir(ctx.request_context),
+            "attrs": {}
+        }
+        
+        for attr in dir(ctx.request_context):
+            if not attr.startswith('_'):
+                try:
+                    value = getattr(ctx.request_context, attr)
+                    if callable(value):
+                        debug_info["request_context"]["attrs"][attr] = f"<method: {type(value).__name__}>"
+                    else:
+                        debug_info["request_context"]["attrs"][attr] = str(value)[:200]
+                        
+                        # If it's a session object, dig deeper
+                        if attr == 'session' and hasattr(value, '__dict__'):
+                            debug_info["request_context"]["session_attrs"] = {}
+                            for session_attr in dir(value):
+                                if not session_attr.startswith('_'):
+                                    try:
+                                        session_value = getattr(value, session_attr)
+                                        debug_info["request_context"]["session_attrs"][session_attr] = str(session_value)[:200]
+                                    except Exception as e:
+                                        debug_info["request_context"]["session_attrs"][session_attr] = f"<error: {e}>"
+                                        
+                except Exception as e:
+                    debug_info["request_context"]["attrs"][attr] = f"<error: {e}>"
+    
+    timestamp = datetime.datetime.now().isoformat()
+    print(f"[{timestamp}] [MCP-DEBUG-CTX] {debug_info}", file=sys.stdout)
+    sys.stdout.flush()
+    return "debug_completed"
 
+def get_session_cwd(ctx: Context) -> str:
+    debug_ctx(ctx, "get_session_cwd")  # Debug call
+    
+    # Try to get conversation ID from request headers (new LibreChat feature)
+    conversation_id = None
+    if hasattr(ctx, 'request_context') and ctx.request_context:
+        if hasattr(ctx.request_context, 'headers'):
+            conversation_id = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
+    
+    # Use conversation ID as session identifier if available
+    if conversation_id:
+        session_id = f"conv_{conversation_id}"
+    else:
+        # Fallback to original logic
+        try:
+            if hasattr(ctx, 'session_id') and ctx.session_id:
+                session_id = str(ctx.session_id)
+            elif ctx.request_context and ctx.request_context.session:
+                session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
+            else:
+                session_id = 'default'
+        except Exception:
+            session_id = 'default'
     if session_id not in session_directories:
         session_directories[session_id] = WORKDIR
     return session_directories[session_id]
 
 def set_session_cwd(ctx: Context, path: str):
-    try:
-        if hasattr(ctx, 'session_id') and ctx.session_id:
-            session_id = str(ctx.session_id)
-        elif ctx.request_context and ctx.request_context.session:
-            session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
-        else:
+    debug_ctx(ctx, "set_session_cwd")  # Debug call
+    
+    # Try to get conversation ID from request headers (new LibreChat feature)
+    conversation_id = None
+    if hasattr(ctx, 'request_context') and ctx.request_context:
+        if hasattr(ctx.request_context, 'headers'):
+            conversation_id = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
+    
+    # Use conversation ID as session identifier if available
+    if conversation_id:
+        session_id = f"conv_{conversation_id}"
+    else:
+        # Fallback to original logic
+        try:
+            if hasattr(ctx, 'session_id') and ctx.session_id:
+                session_id = str(ctx.session_id)
+            elif ctx.request_context and ctx.request_context.session:
+                session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
+            else:
+                session_id = 'default'
+        except Exception:
             session_id = 'default'
-    except Exception:
-        session_id = 'default'
+    
     session_directories[session_id] = os.path.abspath(path)
 
 def log_command(command_type, command_data, result_success=None):
