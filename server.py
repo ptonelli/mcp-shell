@@ -83,58 +83,24 @@ def debug_ctx(ctx: Context, operation: str = "unknown") -> str:
     print(f"[{timestamp}] [MCP-DEBUG-CTX] {debug_info}", file=sys.stdout)
     sys.stdout.flush()
     return "debug_completed"
+def _get_session_key(ctx: Context) -> str:
+    """Extract session key consistently using only conversation ID."""
+    if hasattr(ctx, 'request_context') and ctx.request_context and hasattr(ctx.request_context, 'headers'):
+        cid = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
+        if cid:
+            return f"conv_{cid}"
+    return 'default'
 
 def get_session_cwd(ctx: Context) -> str:
-    debug_ctx(ctx, "get_session_cwd")  # Debug call
-    
-    # Try to get conversation ID from request headers (new LibreChat feature)
-    conversation_id = None
-    if hasattr(ctx, 'request_context') and ctx.request_context:
-        if hasattr(ctx.request_context, 'headers'):
-            conversation_id = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
-    
-    # Use conversation ID as session identifier if available
-    if conversation_id:
-        session_id = f"conv_{conversation_id}"
-    else:
-        # Fallback to original logic
-        try:
-            if hasattr(ctx, 'session_id') and ctx.session_id:
-                session_id = str(ctx.session_id)
-            elif ctx.request_context and ctx.request_context.session:
-                session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
-            else:
-                session_id = 'default'
-        except Exception:
-            session_id = 'default'
+    debug_ctx(ctx, "get_session_cwd")
+    session_id = _get_session_key(ctx)
     if session_id not in session_directories:
         session_directories[session_id] = WORKDIR
     return session_directories[session_id]
 
 def set_session_cwd(ctx: Context, path: str):
-    debug_ctx(ctx, "set_session_cwd")  # Debug call
-    
-    # Try to get conversation ID from request headers (new LibreChat feature)
-    conversation_id = None
-    if hasattr(ctx, 'request_context') and ctx.request_context:
-        if hasattr(ctx.request_context, 'headers'):
-            conversation_id = ctx.request_context.headers.get('x-conversation-id') or ctx.request_context.headers.get('X-Conversation-ID')
-    
-    # Use conversation ID as session identifier if available
-    if conversation_id:
-        session_id = f"conv_{conversation_id}"
-    else:
-        # Fallback to original logic
-        try:
-            if hasattr(ctx, 'session_id') and ctx.session_id:
-                session_id = str(ctx.session_id)
-            elif ctx.request_context and ctx.request_context.session:
-                session_id = str(getattr(ctx.request_context.session, 'id', id(ctx.request_context.session)))
-            else:
-                session_id = 'default'
-        except Exception:
-            session_id = 'default'
-    
+    debug_ctx(ctx, "set_session_cwd")
+    session_id = _get_session_key(ctx)
     session_directories[session_id] = os.path.abspath(path)
 
 def log_command(command_type, command_data, result_success=None):
