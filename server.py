@@ -364,34 +364,121 @@ def replace_lines(
     end_line: Optional[int] = None,
     dry_run: bool = False
 ) -> dict:
-    """Replace or insert lines in a file."""
+    """Replace or insert lines in a file.
+
+    Args:
+        start_line: Line number to start replacement (1-based)
+        end_line: Line number to end replacement (1-based, inclusive). 
+                 If None, only replaces start_line
+        new_content: New content to insert (can be multi-line)
+        dry_run: If True, show changes without applying them
+    """
     cwd = get_session_cwd(ctx)
     abs_path = os.path.normpath(os.path.join(cwd, file_path))
-    
-    if not is_safe_path(abs_path): return {"success": False, "error": "Unauthorized path"}
-    
+
+    if not is_safe_path(abs_path):
+        return {"success": False, "error": "Unauthorized path"}
+
     try:
+        # Read existing file
         with open(abs_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
-        new_lines = [(l + "\n" if not l.endswith("\n") else l) for l in new_content.splitlines()]
-        if new_content.endswith("\n"): new_lines[-1] += "\n"
-        
+
+        total_lines = len(lines)
+
+        # Validate parameters
+        if start_line < 1:
+            return {"success": False, "error": "start_line must be >= 1"}
+        if start_line > total_lines + 1:
+            return {"success": False, "error": f"start_line {start_line} exceeds file length {total_lines}"}
+
+        if end_line is None:
+            end_line = start_line
+        else:
+            if end_line < start_line:
+                return {"success": False, "error": "end_line must be >= start_line"}
+            if end_line > total_lines:
+                return {"success": False, "error": f"end_line {end_line} exceeds file length {total_lines}"}
+
+        # Prepare new content with proper line endings
+        if new_content == "":
+            new_lines = []
+        else:
+            new_lines = new_content.splitlines(keepends=True)
+            # If the last line doesn't end with \n, add it (unless new_content explicitly ended without \n)
+            if new_lines and not new_lines[-1].endswith('\n') and new_content.endswith('\n'):
+                new_lines[-1] += '\n'
+            elif new_lines and not new_lines[-1].endswith('\n') and not new_content.endswith('\n'):
+                # Content doesn't end with newline, but we need to preserve existing file structure
+                # If we're not at the end of file, add newline
+                if end_line < total_lines:
+                    new_lines[-1] += '\n'
+
+        # Create modified content
         modified = lines.copy()
-        end_idx = end_line if end_line is not None else start_line
-        modified[start_line-1:end_idx] = new_lines
-        
-        diff = "".join(difflib.unified_diff(lines, modified, fromfile="before", tofile="after"))
-        
+
+        # Convert to 0-based indexing for array slicing
+        start_idx = start_line - 1
+        end_idx = end_line  # end_line is inclusive, so we don't subtract 1 for slicing
+
+        # Replace the specified range
+        modified[start_idx:end_idx] = new_lines
+
+        # Generate diff
+        diff = "".join(difflib.unified_diff(
+            lines, modified,
+            fromfile=f"{file_path} (before)",
+            tofile=f"{file_path} (after)",
+            lineterm=""
+        ))
+
+        # Apply changes if not dry run
         if not dry_run:
             with open(abs_path, 'w', encoding='utf-8') as f:
                 f.writelines(modified)
-        
-        return {"success": True, "diff": diff, "dry_run": dry_run}
+
+        lines_affected = end_line - start_line + 1
+        lines_inserted = len(new_lines)
+
+        return {
+            "success": True,
+            "diff": diff,
+            "dry_run": dry_run,
+            "lines_affected": lines_affected,
+            "lines_inserted": lines_inserted,
+            "operation": "insert" if start_line > total_lines else "replace"
+        }
+
+    except FileNotFoundError:
+        return {"success": False, "error": f"File '{file_path}' not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@mcp.tool()
+def debug_headers(ctx: Context) -> dict:
+    """Debug tool to inspect the raw headers and context received from the client."""
+    result = {
+        "session_id": getattr(ctx, "session_id", None),
+        "request_context_type": str(type(getattr(ctx, "request_context", None))),
+        "request_context_type": str(ctx.request_context.request.headers),
+        "headers": {}
+    }
+
+    if hasattr(ctx, "request_context") and ctx.request_context:
+        if hasattr(ctx.request_context, "headers"):
+            try:
+                # Attempt to convert Headers object to dict
+                result["headers"] = dict(ctx.request_context.headers)
+            except Exception as e:
+                result["headers"] = {"error": f"Could not convert headers: {str(e)}", "raw": str(ctx.request_context.headers)}
+        else:
+            result["headers"] = "No headers found in request_context"
+    else:
+         result["error"] = "No request_context found in ctx"
+
+    return result
 
 if __name__ == "__main__":
     os.chdir(WORKDIR)
     print(f"Starting MCP-Shell on {HOST}:{PORT}, WORKDIR={WORKDIR}")
-    mcp.run(transport="sse")
+    mcp.run(transport="streamable-http")
