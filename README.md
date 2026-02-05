@@ -24,8 +24,8 @@ Add this to your `librechat.yaml`. The `X-Conversation-ID` header is crucial for
 ```yaml
 mcpServers:
   mcp-shell:
-    type: sse
-    url: http://mcp-shell:8000/sse
+    type: streamable-http
+    url: http://mcp-shell:8000/mcp
     headers:
       # 🎯 KEY: This enables per-conversation isolation
       X-Conversation-ID: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
