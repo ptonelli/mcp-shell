@@ -1,5 +1,5 @@
-# Use Python 3.10 as base image
-FROM python:3.10-slim
+# Use Python 3.11 as base image
+FROM python:3.11-slim
 
 # Add useful command line tools and gosu for step-down from root
 RUN apt-get update && \
