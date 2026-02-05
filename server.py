@@ -96,9 +96,6 @@ def _get_session_key(ctx: Context) -> str:
     except Exception:
         pass
     return 'default'
-            return f"conv_{cid}"
-            
-    return 'default'
 
 def get_session_cwd(ctx: Context) -> str:
     debug_ctx(ctx, "get_session_cwd")
@@ -435,24 +432,22 @@ def debug_headers(ctx: Context) -> dict:
     result = {
         "session_id": getattr(ctx, "session_id", None),
         "request_context_type": str(type(getattr(ctx, "request_context", None))),
-        "request_context_type": str(ctx.request_context.request.headers),
         "headers": {}
     }
 
-    if hasattr(ctx, "request_context") and ctx.request_context:
-        if hasattr(ctx.request_context, "headers"):
-            try:
-                # Attempt to convert Headers object to dict
-                result["headers"] = dict(ctx.request_context.headers)
-            except Exception as e:
-                result["headers"] = {"error": f"Could not convert headers: {str(e)}", "raw": str(ctx.request_context.headers)}
+    try:
+        if hasattr(ctx, "request_context") and ctx.request_context:
+            if hasattr(ctx.request_context, "request") and hasattr(ctx.request_context.request, "headers"):
+                # Correct location for headers
+                result["headers"] = dict(ctx.request_context.request.headers)
+            else:
+                result["headers"] = "No headers found in request_context.request"
         else:
-            result["headers"] = "No headers found in request_context"
-    else:
-         result["error"] = "No request_context found in ctx"
+             result["error"] = "No request_context found in ctx"
+    except Exception as e:
+        result["error"] = f"Error inspecting headers: {str(e)}"
 
     return result
-
 if __name__ == "__main__":
     os.chdir(WORKDIR)
     print(f"Starting MCP-Shell on {HOST}:{PORT}, WORKDIR={WORKDIR}")
