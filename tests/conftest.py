@@ -36,9 +36,9 @@ def mcp_server(test_workdir):
     env["MCP_TRANSPORT"] = "sse"  # Ajouté pour les tests
 
     # Lancer le serveur comme sous-processus
-    print(f"\\n[SETUP] Démarrage du serveur MCP sur le port {TEST_PORT}...")
+    print(f"\n[SETUP] Démarrage du serveur MCP sur le port {TEST_PORT}...")
     proc = subprocess.Popen(
-        [sys.executable, "server.py"],
+        [sys.executable, "main.py"],
         env=env,
         stdout=sys.stdout,  # Redirige vers la console pour éviter le blocage
         stderr=sys.stderr,
@@ -63,7 +63,7 @@ def mcp_server(test_workdir):
             
     if not started:
         # Si échec, on lit les logs pour debug
-        print(f"\\n[ERROR] Timeout lors de la connexion au serveur. Tentative de récupération des logs...")
+        print(f"\n[ERROR] Timeout lors de la connexion au serveur. Tentative de récupération des logs...")
         proc.terminate()
         try:
             stdout, stderr = proc.communicate(timeout=2)
@@ -71,13 +71,13 @@ def mcp_server(test_workdir):
             proc.kill()
             stdout, stderr = proc.communicate()
             
-        print(f"STDOUT: {stdout}\\nSTDERR: {stderr}")
+        print(f"STDOUT: {stdout}\nSTDERR: {stderr}")
         pytest.fail("Le serveur MCP n'a pas démarré dans les temps.")
 
     print(f"[SETUP] Serveur démarré.")
     yield SERVER_URL    
     # Teardown : Arrêt du serveur
-    print(f"\\n[TEARDOWN] Arrêt du serveur...")
+    print(f"\n[TEARDOWN] Arrêt du serveur...")
     proc.terminate()
     try:
         proc.wait(timeout=2)
@@ -103,14 +103,3 @@ async def client_session(mcp_server, test_workdir):
             await session.call_tool("cd", arguments={"directory": test_workdir})
             
             yield session
-
-import pytest
-import pytest_asyncio
-import subprocess
-import sys
-import os
-
-import time
-import signal
-import tempfile
-import shutil
