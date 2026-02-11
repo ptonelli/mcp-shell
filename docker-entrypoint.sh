@@ -28,6 +28,12 @@ if [ -f /usr/local/bin/setup_ssh_keys.sh ]; then
     gosu $USER_ID:$GROUP_ID /usr/local/bin/setup_ssh_keys.sh
 fi
 
+# Set up Git configuration from environment variables
+if [ -f /usr/local/bin/setup_git_config.sh ]; then
+    echo "Setting up Git configuration from environment variables..."
+    gosu $USER_ID:$GROUP_ID /usr/local/bin/setup_git_config.sh
+fi
+
 # Create default project directory if it doesn't exist
 if [ ! -d "$WORKDIR/default" ]; then
     mkdir -p $WORKDIR/default

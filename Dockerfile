@@ -19,11 +19,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY server.py .
 
-
 COPY docker-entrypoint.sh /usr/local/bin/
 COPY setup_ssh_keys.sh /usr/local/bin/
+COPY setup_git_config.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && chmod +x /usr/local/bin/setup_ssh_keys.sh
+    && chmod +x /usr/local/bin/setup_ssh_keys.sh \
+    && chmod +x /usr/local/bin/setup_git_config.sh
 
 # Set environment variables
 ENV HOST=0.0.0.0
