@@ -29,12 +29,24 @@ if [ -f /usr/local/bin/setup_ssh_keys.sh ]; then
     chown -R $USER_ID:$GROUP_ID "$SSH_DIR"
     chmod 700 "$SSH_DIR"
     gosu $USER_ID:$GROUP_ID /usr/local/bin/setup_ssh_keys.sh
-fi
-
 # Set up Git configuration from environment variables
 if [ -f /usr/local/bin/setup_git_config.sh ]; then
     echo "Setting up Git configuration from environment variables..."
     gosu $USER_ID:$GROUP_ID /usr/local/bin/setup_git_config.sh
+    # Lock git config
+    if [ -f /home/mcp/.gitconfig ]; then
+        chown root:root /home/mcp/.gitconfig
+        chmod 644 /home/mcp/.gitconfig
+    fi
+fi
+
+# Lock SSH directory and keys (owned by root, readable by mcp)
+if [ -d /home/mcp/.ssh ]; then
+    echo "Locking SSH configuration..."
+    chown -R root:$GROUP_ID /home/mcp/.ssh
+    chmod 750 /home/mcp/.ssh
+    chmod 640 /home/mcp/.ssh/*
+fi
 fi
 
 # Create default project directory if it doesn't exist
