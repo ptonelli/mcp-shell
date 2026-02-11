@@ -18,6 +18,9 @@ if ! getent passwd $USER_ID > /dev/null; then
     useradd -u $USER_ID -g $GROUP_ID -m -s /bin/bash mcp
 fi
 
+# Ensure home directory is owned by the user (especially if it existed before)
+chown $USER_ID:$GROUP_ID /home/mcp
+
 # Set up SSH keys from environment variables
 if [ -f /usr/local/bin/setup_ssh_keys.sh ]; then
     echo "Setting up SSH keys from environment variables..."
