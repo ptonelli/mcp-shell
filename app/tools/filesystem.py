@@ -6,6 +6,8 @@ from app.context import get_session_cwd, set_session_cwd, log_command
 from app.security import is_safe_path
 from app.config import WORKDIR
 
+# --- NAVIGATION & LECTURE ---
+
 def cd(ctx: Context, directory: str) -> dict:
     """Change the session's current working directory."""
     log_command("cd", f"directory={directory}")
@@ -48,7 +50,8 @@ def cd(ctx: Context, directory: str) -> dict:
             "success": False,
             "message": f"Failed to change directory: {str(e)}",
             "current_directory": current_dir,
-            "error": type(e).__name__        }
+            "error": type(e).__name__
+        }
 
 def read_file(
     ctx: Context,
@@ -60,123 +63,161 @@ def read_file(
     """Read specific lines from a file in the session's directory."""
     cwd = get_session_cwd(ctx)
     abs_path = os.path.normpath(os.path.join(cwd, file_path))
-    
+
     if not is_safe_path(abs_path): return {"success": False, "error": "Unauthorized path"}
     if not os.path.isfile(abs_path): return {"success": False, "error": "File not found"}
 
     try:
         with open(abs_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
+
         total = len(lines)
         start = max(1, start_line)
         end = min(end_line or total, total)
-        
+
         selected = lines[start-1:end]
         if show_line_numbers:
             width = len(str(end))
             content = "".join(f"{i:>{width}}: {l}" for i, l in enumerate(selected, start=start))
         else:
             content = "".join(selected)
-            
+
         return {"success": True, "content": content, "total_lines": total, "lines_read": len(selected)}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-def replace_lines(
+# --- ÉDITION ROBUSTE (Remplace replace_lines) ---
+
+def search_replace(
     ctx: Context,
     file_path: str,
-    start_line: int,
-    new_content: str,
-    end_line: Optional[int] = None,
+    search: str,
+    replace: str,
+    occurrence: int = 1,
     dry_run: bool = False
 ) -> dict:
-    """Replace or insert lines in a file.
-
-    Args:
-        start_line: Line number to start replacement (1-based)
-        end_line: Line number to end replacement (1-based, inclusive). 
-                 If None, only replaces start_line
-        new_content: New content to insert (can be multi-line)
-        dry_run: If True, show changes without applying them
+    """
+    Replace text by searching for an exact match.
+    This is much safer than line numbers.
     """
     cwd = get_session_cwd(ctx)
     abs_path = os.path.normpath(os.path.join(cwd, file_path))
 
-    if not is_safe_path(abs_path):
-        return {"success": False, "error": "Unauthorized path"}
+    if not is_safe_path(abs_path): return {"success": False, "error": "Unauthorized path"}
+    if not os.path.isfile(abs_path): return {"success": False, "error": f"File '{file_path}' not found"}
 
     try:
-        # Read existing file
         with open(abs_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+            original = f.read()
 
-        total_lines = len(lines)
+        count = original.count(search)
+        if count == 0:
+            return {"success": False, "error": "Search text not found", "hint": _fuzzy_hint(original, search)}
 
-        # Validate parameters
-        if start_line < 1:
-            return {"success": False, "error": "start_line must be >= 1"}
-        if start_line > total_lines + 1:
-            return {"success": False, "error": f"start_line {start_line} exceeds file length {total_lines}"}
+        if occurrence != 0 and occurrence > count:
+            return {"success": False, "error": f"Only {count} occurrences found, cannot replace n°{occurrence}"}
 
-        if end_line is None:
-            end_line = start_line
+        # Replacement logic
+        if occurrence == 0:
+            modified = original.replace(search, replace)
+            replaced_count = count
         else:
-            if end_line < start_line:
-                return {"success": False, "error": "end_line must be >= start_line"}
-            if end_line > total_lines:
-                return {"success": False, "error": f"end_line {end_line} exceeds file length {total_lines}"}
-
-        # Prepare new content with proper line endings
-        if new_content == "":
-            new_lines = []
-        else:
-            new_lines = new_content.splitlines(keepends=True)
-            # If the last line doesn't end with \n, add it (unless new_content explicitly ended without \n)
-            if new_lines and not new_lines[-1].endswith('\n') and new_content.endswith('\n'):
-                new_lines[-1] += '\n'
-            elif new_lines and not new_lines[-1].endswith('\n') and not new_content.endswith('\n'):
-                # Content doesn't end with newline, but we need to preserve existing file structure
-                # If we're not at the end of file, add newline
-                if end_line < total_lines:
-                    new_lines[-1] += '\n'
-
-        # Create modified content
-        modified = lines.copy()
-
-        # Convert to 0-based indexing for array slicing
-        start_idx = start_line - 1
-        end_idx = end_line  # end_line is inclusive, so we don't subtract 1 for slicing
-
-        # Replace the specified range
-        modified[start_idx:end_idx] = new_lines
+            modified = _replace_nth(original, search, replace, occurrence)
+            replaced_count = 1
 
         # Generate diff
         diff = "".join(difflib.unified_diff(
-            lines, modified,
-            fromfile=f"{file_path} (before)",
-            tofile=f"{file_path} (after)",
-            lineterm=""
+            original.splitlines(keepends=True),
+            modified.splitlines(keepends=True),
+            fromfile=f"a/{file_path}", tofile=f"b/{file_path}"
         ))
 
-        # Apply changes if not dry run
         if not dry_run:
             with open(abs_path, 'w', encoding='utf-8') as f:
-                f.writelines(modified)
-
-        lines_affected = end_line - start_line + 1
-        lines_inserted = len(new_lines)
+                f.write(modified)
 
         return {
             "success": True,
             "diff": diff,
-            "dry_run": dry_run,
-            "lines_affected": lines_affected,
-            "lines_inserted": lines_inserted,
-            "operation": "insert" if start_line > total_lines else "replace"
+            "occurrences_replaced": replaced_count,
+            "dry_run": dry_run
         }
-
-    except FileNotFoundError:
-        return {"success": False, "error": f"File '{file_path}' not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+def insert_lines(
+    ctx: Context,
+    file_path: str,
+    line_number: int,
+    content: str,
+    position: str = "after",
+    dry_run: bool = False
+) -> dict:
+    """Insert text at a specific line without deleting existing code."""
+    cwd = get_session_cwd(ctx)
+    abs_path = os.path.normpath(os.path.join(cwd, file_path))
+
+    if not is_safe_path(abs_path): return {"success": False, "error": "Unauthorized path"}
+    if not os.path.isfile(abs_path): return {"success": False, "error": "File not found"}
+
+    try:
+        with open(abs_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        if not content.endswith('\n'): content += '\n'
+        new_content_lines = content.splitlines(keepends=True)
+
+        # Calculate insertion index
+        idx = line_number if position == "after" else max(0, line_number - 1)
+        modified = lines[:idx] + new_content_lines + lines[idx:]
+
+        diff = "".join(difflib.unified_diff(lines, modified, fromfile=f"a/{file_path}", tofile=f"b/{file_path}"))
+
+        if not dry_run:
+            with open(abs_path, 'w', encoding='utf-8') as f:
+                f.writelines(modified)
+
+        return {"success": True, "diff": diff, "dry_run": dry_run}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def write_file(
+    ctx: Context,
+    file_path: str,
+    content: str,
+    overwrite: bool = False
+) -> dict:
+    """Create a new file or overwrite an existing one entirely."""
+    cwd = get_session_cwd(ctx)
+    abs_path = os.path.normpath(os.path.join(cwd, file_path))
+
+    if not is_safe_path(abs_path): return {"success": False, "error": "Unauthorized path"}
+    if os.path.exists(abs_path) and not overwrite:
+        return {"success": False, "error": "File exists. Use overwrite=True to replace it."}
+
+    try:
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return {"success": True, "message": f"File written to {file_path}", "size": len(content)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# --- HELPERS ---
+
+def _replace_nth(text: str, search: str, replace: str, n: int) -> str:
+    """Replaces the Nth occurrence of a string."""
+    parts = text.split(search)
+    if len(parts) <= n: return text
+    return search.join(parts[:n]) + replace + search.join(parts[n:])
+
+def _fuzzy_hint(original: str, search: str) -> str:
+    """Returns a hint if the search failed but something similar exists."""
+    search_lines = search.strip().splitlines()
+    if not search_lines: return ""
+
+    # Simple check for the first line of the search block
+    for i, line in enumerate(original.splitlines()):
+        if search_lines[0].strip() in line:
+            return f"Search failed, but a similar line was found at line {i+1}. Check indentation/spaces."
+    return "No similar text found. Use read_file to verify the exact content."
