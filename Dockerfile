@@ -17,7 +17,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY server.py .
+COPY main.py .
+COPY app/ ./app/
 
 COPY docker-entrypoint.sh /usr/local/bin/
 COPY setup_ssh_keys.sh /usr/local/bin/
@@ -42,5 +43,5 @@ EXPOSE 8000
 
 # Set entrypoint
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["python", "server.py"]
+CMD ["python", "main.py"]
 
